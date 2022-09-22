@@ -1,43 +1,42 @@
 from flask import Flask, request
+import logging
 import os
+import json
 import pymysql
 
 app = Flask(__name__)
 
-@app.route("/redeem", methods=["POST"])
-def claimLicenseKey():
+@app.route("/getkey", methods=["GET"])
+def getLicenseKey():
         content = request.get_json(force = True)
         email = content['email']
-        license_key = content['license_key']
 
-        sql = "UPDATE user_license SET claimed=1 WHERE user='" + email + "' AND license_key='" + license_key + "' AND claimed=0"
-        mycursor.execute(sql)
+        sql = "SELECT license_key FROM user_license WHERE user='" + email + "'"
+        result = mycursor.execute(sql)
         mydb.commit()
 
-        mycursor.execute("SELECT * FROM user_license WHERE user='" + email + "' AND license_key='" + license_key + "' AND claimed=1")
         result = mycursor.fetchall()
+        json_result = json.dumps(result)
 
-        if(len(result) == 1):
-                return "License-key successfully claimed!"
-        else:
-                return "No matching entries found in DB"
+        return json_result
 
-        
-if __name__ == "__main__":
-        app.run()
 
 app.logger.info("%s" % os.environ.get("DB"))
+conn = {
+        "host": os.environ.get('HOST'),
+        "db": os.environ.get('DB'), 
+        "user": os.environ.get('DB_USERNAME'), 
+        "password": os.environ.get('DB_PASSWORD'),
+}
+
 global mydb
-mydb = pymysql.connect(
-        host= os.environ.get('HOST'),
-        db=os.environ.get('DB'), 
-        user=os.environ.get('DB_USERNAME'), 
-        passwd=os.environ.get('DB_PASSWORD'), 
-)
+mydb = pymysql.connect(**conn)
 
 global mycursor
 mycursor = mydb.cursor()
-mycursor.execute("DROP TABLE user_license")
+mycursor.execute("DROP TABLE IF EXISTS user_license")
+mydb.commit()
+
 mycursor.execute("CREATE TABLE user_license (user VARCHAR(40), license_key VARCHAR(100), claimed tinyint(1))")
 
 sql = "INSERT INTO user_license (user, license_key, claimed) VALUES (%s, %s, %s)"
@@ -49,3 +48,8 @@ val = [
 
 mycursor.executemany(sql, val)
 mydb.commit()
+app.logger.addHandler(logging.StreamHandler())
+app.logger.setLevel(logging.INFO)
+
+if __name__ == "__main__":
+        app.run()
